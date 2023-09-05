@@ -73,6 +73,43 @@ def get_folder_from_path(base_ishellfolder, path):
             return folder if not rest else get_folder_from_path(folder, "\\".join(rest))
     return None
 
+import json
+
+def list_folders_and_files(base_ishellfolder):
+    """Lists both folders and files in the given IShellFolder."""
+    items = []
+    for pidl in base_ishellfolder:
+        name = base_ishellfolder.GetDisplayNameOf(pidl, shellcon.SHGDN_NORMAL)
+        items.append(name)
+    return items
+
+def generate_structure(base_ishellfolder, depth=0, max_depth=None):
+    """Recursively generate the folder and file structure."""
+    if max_depth is not None and depth > max_depth:
+        return None
+    structure = {"folders": {}, "files": []}
+    for pidl in base_ishellfolder:
+        name = base_ishellfolder.GetDisplayNameOf(pidl, shellcon.SHGDN_NORMAL)
+        attrs = base_ishellfolder.GetAttributesOf([pidl], shellcon.SFGAO_FOLDER)
+        if attrs & shellcon.SFGAO_FOLDER:
+            try:
+                folder = base_ishellfolder.BindToObject(pidl, None, shell.IID_IShellFolder)
+                structure["folders"][name] = generate_structure(folder, depth=depth+1, max_depth=max_depth)
+            except:
+                # If binding failed, it might be a special folder or inaccessible.
+                # You can handle this case as you see fit.
+                pass
+        else:
+            structure["files"].append(name)
+    return structure
+
+def save_structure_to_json(ishellfolder, output_file, max_depth=None):
+    # save_structure_to_json(shell.SHGetDesktopFolder(), 'output.json')
+    structure = generate_structure(ishellfolder, max_depth=max_depth)
+    with open(output_file, 'w', encoding='utf-8') as f:
+        json.dump(structure, f, ensure_ascii=False, indent=4)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", "--folder", help="folder path, e.g. \"This PC\\Apple iPhone\"")
@@ -100,6 +137,7 @@ if __name__ == '__main__':
                 selected_path = ""  # Default to empty string if no items on the desktop
 
         print(f"Final selected path: {selected_path}")
+        save_structure_to_json(get_folder_from_path(shell.SHGetDesktopFolder(), selected_path), 'output.json')
 
     except Exception as e:
         print("An error occurred:", e)
